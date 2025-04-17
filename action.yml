@@ -25,7 +25,7 @@ runs:
     - name: Setup Script
       shell: bash
       run: |
-        IMAGE=ghcr.io/gbraad-actions/fedora:stable
+        IMAGE="ghcr.io/gbraad-actions/fedora:stable"
 
         # Create a temporary script file
         TEMP_SCRIPT=$(mktemp)
