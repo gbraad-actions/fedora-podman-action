@@ -25,8 +25,6 @@ runs:
     - name: Setup Script
       shell: bash
       run: |
-        IMAGE="ghcr.io/gbraad-actions/fedora:stable"
-
         # Create a temporary script file
         TEMP_SCRIPT=$(mktemp)
         STDOUT_FILE=$(mktemp)
@@ -71,6 +69,8 @@ runs:
     - name: Run in Podman Container
       shell: bash
       run: |
+        IMAGE=ghcr.io/gbraad-actions/fedora:stable
+
         # Run the script in a Fedora container using podman
         podman run --rm \
           -v ${{ github.workspace }}:${{ github.workspace }} \
