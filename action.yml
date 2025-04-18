@@ -57,8 +57,6 @@ runs:
         fi
 
         chmod +x $TEMP_SCRIPT
-        echo "temp-script=$TEMP_SCRIPT" >> $GITHUB_ENV
-
     - name: Use Podman Action
       uses: gbraad-actions/podman-action@main
       with:
@@ -67,5 +65,5 @@ runs:
         working-directory: ${{ inputs.working-directory }}
         entrypoint: ${{ inputs.entrypoint }}
         podman-args: |
-          -v "${{ env.temp-script }}:/tmp/run_script.sh:ro"
+          -v "/tmp/run_script.sh:/tmp/run_script.sh:ro"
           ${{ inputs.podman-args }}
