@@ -61,7 +61,7 @@ runs:
       uses: gbraad-actions/podman-action@main
       with:
         image: ${{ inputs.image }}
-        run: /bin/bash /tmp/run_script.sh
+        run: /tmp/run_script.sh
         working-directory: ${{ inputs.working-directory }}
         entrypoint: ${{ inputs.entrypoint }}
         podman-args: |
