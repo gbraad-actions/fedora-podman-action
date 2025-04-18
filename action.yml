@@ -1,8 +1,13 @@
 name: 'Fedora container Action (podman)'
 description: 'Run commands in a Fedora container environment using Podman'
+
 inputs:
+  image:
+    description: 'Container image to use (defaulting to Fedora)'
+    required: false
+    default: 'fedora:latest'
   run:
-    description: 'Shell command to execute in the Fedora container'
+    description: 'Shell command to execute in the container'
     required: false
   script-file:
     description: 'Path to a shell script to execute in the Fedora container (takes precedence over shell-command)'
@@ -11,6 +16,13 @@ inputs:
     description: 'Working directory where commands will be executed'
     required: false
     default: '.'
+  entrypoint:
+    description: 'Override the default entrypoint of the container image'
+    required: false
+    default: ''
+  podman-args:
+    description: 'Additional arguments to pass to podman run command'
+    required: false
   dnf-packages:
     description: 'Space-separated list of packages to install before running the command'
     required: false
@@ -22,78 +34,38 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Setup Script
+    - name: Prepare command with dnf-packages
+      id: prepare
       shell: bash
       run: |
-        # Create a temporary script file
-        TEMP_SCRIPT=$(mktemp)
-        STDOUT_FILE=$(mktemp)
-        EXIT_CODE_FILE=$(mktemp)
-        
+        # Create a temporary script to handle dnf-package installation
+        TEMP_SCRIPT="/tmp/run_script.sh"
         echo "#!/bin/bash" > $TEMP_SCRIPT
         echo "set -e" >> $TEMP_SCRIPT
-        
-        # Change to working directory if specified
-        echo "cd '${{ inputs.working-directory }}'" >> $TEMP_SCRIPT
-        
-        # Install additional packages if requested
+
+        # Add dnf package installation if specified
         if [ ! -z "${{ inputs.dnf-packages }}" ]; then
           echo "echo 'Installing packages: ${{ inputs.dnf-packages }}'" >> $TEMP_SCRIPT
           echo "dnf install -y ${{ inputs.dnf-packages }}" >> $TEMP_SCRIPT
         fi
-        
-        # Execute the command or script and capture output
-        if [ ! -z "${{ inputs.script-file }}" ]; then
-          echo "if [ -f '${{ inputs.script-file }}' ]; then" >> $TEMP_SCRIPT
-          echo "  echo 'Executing script: ${{ inputs.script-file }}'" >> $TEMP_SCRIPT
-          echo "  chmod +x '${{ inputs.script-file }}'" >> $TEMP_SCRIPT
-          echo "  bash '${{ inputs.script-file }}' || echo \$? > /tmp/exit_code" >> $TEMP_SCRIPT
-          echo "else" >> $TEMP_SCRIPT
-          echo "  echo 'Error: Script file not found: ${{ inputs.script-file }}'" >> $TEMP_SCRIPT
-          echo "  echo 1 > /tmp/exit_code" >> $TEMP_SCRIPT
-          echo "fi" >> $TEMP_SCRIPT
-        elif [ ! -z "${{ inputs.run }}" ]; then
-          echo "echo 'Executing command: ${{ inputs.run }}'" >> $TEMP_SCRIPT
-          echo "bash -c '${{ inputs.run }}' || echo \$? > /tmp/exit_code" >> $TEMP_SCRIPT
-        else
-          echo "echo 'Error: Either run or script-file must be provided'" >> $TEMP_SCRIPT
-          echo "echo 1 > /tmp/exit_code" >> $TEMP_SCRIPT
-        fi
-        
-        chmod +x $TEMP_SCRIPT
-        
-        echo "TEMP_SCRIPT=$TEMP_SCRIPT" >> $GITHUB_ENV
-        echo "STDOUT_FILE=$STDOUT_FILE" >> $GITHUB_ENV
-        echo "EXIT_CODE_FILE=$EXIT_CODE_FILE" >> $GITHUB_ENV
-    
-    - name: Run in Podman Container
-      shell: bash
-      run: |
-        IMAGE=ghcr.io/gbraad-actions/fedora:stable
 
-        # Run the script in a Fedora container using podman
-        podman run --rm \
-          -v ${{ github.workspace }}:${{ github.workspace }} \
-          -v ${TEMP_SCRIPT}:/tmp/run_script.sh \
-          -v ${STDOUT_FILE}:/tmp/stdout \
-          -v ${EXIT_CODE_FILE}:/tmp/exit_code \
-          -w ${{ github.workspace }} \
-          ${IMAGE} \
-          /bin/bash -c "/tmp/run_script.sh 2>&1 | tee /tmp/stdout"
-        
-        # Capture the exit code
-        if [ -s ${EXIT_CODE_FILE} ]; then
-          exit_code=$(cat ${EXIT_CODE_FILE})
-        else
-          exit_code=0
+        # Add script-file or run command
+        if [ ! -z "${{ inputs.script-file }}" ]; then
+          echo "bash '${{ inputs.script-file }}'" >> $TEMP_SCRIPT
+        elif [ ! -z "${{ inputs.run }}" ]; then
+          echo "bash -c '${{ inputs.run }}'" >> $TEMP_SCRIPT
         fi
-        
-        # Set outputs with proper multi-line handling
-        echo "exit-code=${exit_code}" >> $GITHUB_OUTPUT
-        
-        echo "stdout<<EOF" >> $GITHUB_OUTPUT
-        cat ${STDOUT_FILE} >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-        
-        # Clean up temporary files
-        rm -f ${TEMP_SCRIPT} ${STDOUT_FILE} ${EXIT_CODE_FILE} || true
+
+        chmod +x $TEMP_SCRIPT
+        echo "temp-script=$TEMP_SCRIPT" >> $GITHUB_ENV
+
+    - name: Use Podman Action
+      uses: gbraad-actions/podman-action@main
+      with:
+        image: ${{ inputs.image }}
+        run: /bin/bash /tmp/run_script.sh
+        working-directory: ${{ inputs.working-directory }}
+        entrypoint: ${{ inputs.entrypoint }}
+        podman-args: |
+          -v "${{ env.temp-script }}:/tmp/run_script.sh:ro"
+          ${{ inputs.podman-args }}
